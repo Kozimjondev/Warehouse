@@ -8,6 +8,8 @@ class MaterialRequirementsCalculator:
         self.used_batch_ids = []
 
     def calculate(self):
+        warehouse_quantities = {}  # Dictionary to track quantities used in each warehouse
+
         for product_data in self.products_data:
             product_id = product_data.get('product_id')
             product_qty = product_data.get('product_qty')
@@ -35,30 +37,59 @@ class MaterialRequirementsCalculator:
                     ).first()
 
                     if material_batch:
-                        self.used_batch_ids.append(material_batch.id)
-
                         available_qty = material_batch.remainder
+
+                        # Check if warehouse ID is used in the previous product
+                        if material_batch.id in warehouse_quantities:
+                            available_qty -= warehouse_quantities[material_batch.id]
+
                         deducted_qty = min(remaining_qty, available_qty)
 
                         product_material_data = {
                             "warehouse_id": material_batch.id,
                             "material_name": material.name,
-                            "qty": deducted_qty,
+                            "qty": int(deducted_qty),
                             "price": material_batch.price
                         }
+
+                        # Append the material data to product_materials
+                        product_info["product_materials"].append(product_material_data)
+
+                        # Update remaining quantity
+                        remaining_qty -= deducted_qty
+
+                        # Add the batch ID to used_batch_ids
+                        self.used_batch_ids.append(material_batch.id)
+                        print(self.used_batch_ids)
+                        # Update warehouse quantities
+                        if material_batch.id in warehouse_quantities:
+                            warehouse_quantities[material_batch.id] += deducted_qty
+                        else:
+                            warehouse_quantities[material_batch.id] = deducted_qty
+                        # print(warehouse_quantities)
                     else:
                         # If no batch is available, mark the material as unavailable
                         product_material_data = {
                             "warehouse_id": None,
                             "material_name": material.name,
-                            "qty": remaining_qty,
+                            "qty": int(remaining_qty),
                             "price": None
                         }
+
+                        # Append the material data to product_materials
+                        product_info["product_materials"].append(product_material_data)
+
+                        # Set remaining quantity to 0
                         remaining_qty = 0
 
-                    remaining_qty -= deducted_qty
-                    product_info["product_materials"].append(product_material_data)
-
             self.result.append(product_info)
+            for product in self.result:
+                product['product_materials'] = [material for material in product["product_materials"]
+                                                if not (
+                        material.get("qty") == 0
+                )]
+
+            # Reset used_batch_ids for the next product
+            self.used_batch_ids = []
 
         return self.result
